@@ -1,0 +1,3 @@
+../Core/Src/lps25hb.c:27:16:LPS_Read_Register	40	static
+../Core/Src/lps25hb.c:34:13:LPS_Write_Register	32	static
+../Core/Src/lps25hb.c:39:19:LPS_Init	8	static
