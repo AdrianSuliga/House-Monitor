@@ -37,8 +37,8 @@
 /* USER CODE BEGIN PD */
 #define SUPPLIED_VOLTAGE 3.3f
 #define FIXED_PHOTORESISTOR_RESISTANCE 1000.0f
-#define PHOTORESISTOR_EXPONENT 1.2f
-#define PHOTORESISTOR_MULTIPLIER 3200.0f
+#define PHOTORESISTOR_EXPONENT 0.95f
+#define PHOTORESISTOR_MULTIPLIER 7000000.0f
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -109,15 +109,21 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  HAL_ADC_Start(&hadc1);
   while (1)
   {
-	  float photoresistor_voltage = HAL_ADC_GetValue(&hadc1) * SUPPLIED_VOLTAGE / 4096.0f;
-	  float photoresistor_resistance = FIXED_PHOTORESISTOR_RESISTANCE * (SUPPLIED_VOLTAGE / photoresistor_voltage - 1);
-	  float lux_level = PHOTORESISTOR_MULTIPLIER / pow(photoresistor_resistance, PHOTORESISTOR_EXPONENT);
+	  if (HAL_GPIO_ReadPin(USER_BUTTON_GPIO_Port, USER_BUTTON_Pin) == GPIO_PIN_RESET)
+	  {
+		  HAL_ADC_Start(&hadc1);
+		  HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
 
-	  printf("U = %.2f V, R = %.2f om, L = %.2f\n", photoresistor_voltage, photoresistor_resistance, lux_level);
-	  HAL_Delay(250);
+		  float photoresistor_voltage = HAL_ADC_GetValue(&hadc1) * SUPPLIED_VOLTAGE / 4096.0f;
+		  float light_percentage = photoresistor_voltage * 100.0f / SUPPLIED_VOLTAGE;
+		  float photoresistor_resistance = FIXED_PHOTORESISTOR_RESISTANCE * (SUPPLIED_VOLTAGE / photoresistor_voltage - 1);
+		  float lux_level = PHOTORESISTOR_MULTIPLIER / pow(photoresistor_resistance, PHOTORESISTOR_EXPONENT);
+
+		  printf("P = %.2f %%, L = %.2f lux\n", light_percentage, lux_level);
+		  HAL_Delay(250);
+	  }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
