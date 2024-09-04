@@ -10,7 +10,12 @@
 
 #include <stm32f1xx.h>
 
-// Initialize DHT11 sensor
-void DHT11_Init(void);
+// Read values from DHT11 sensor
+// This function handles initializing
+// sensor by sending it START signal
+// values - array of four bytes that
+// this function writes to
+// return - HAL_OK or HAL_ERROR
+HAL_StatusTypeDef DHT11_Read(uint8_t* values);
 
 #endif /* INC_DHT11_H_ */

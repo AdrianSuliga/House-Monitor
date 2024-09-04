@@ -20,12 +20,15 @@
 #include "main.h"
 #include "adc.h"
 #include "i2c.h"
+#include "rtc.h"
+#include "tim.h"
 #include "usart.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "lps25hb.h"
+#include "dht11.h"
 #include <stdio.h>
 #include <math.h>
 /* USER CODE END Includes */
@@ -106,8 +109,13 @@ int main(void)
   MX_USART2_UART_Init();
   MX_ADC1_Init();
   MX_I2C1_Init();
+  MX_RTC_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
+  HAL_TIM_Base_Start(&htim2);
+
   HAL_ADCEx_Calibration_Start(&hadc1);
+
   if (LPS_Init() != HAL_OK)
 	  Error_Handler();
 
@@ -116,7 +124,7 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 
-  HAL_Delay(100);
+  HAL_Delay(1000);
 
   while (1)
   {
@@ -134,8 +142,14 @@ int main(void)
 		  float temp = LPS_Read_Temp();
 		  float pressure = LPS_Read_Pressure();
 
+		  uint8_t dht_vals[4] = {0};
+		  if (DHT11_Read(dht_vals) != HAL_OK)
+			  Error_Handler();
+
 		  printf("P = %.2f %%, L = %.2f lux, T = %.1f C, p = %.1f hPa\n", light_percentage, lux_level, temp, pressure);
-		  HAL_Delay(250);
+		  printf("H = %d.%d %%, T = %d.%d C\n\n", dht_vals[0], dht_vals[1], dht_vals[2], dht_vals[3]);
+
+		  HAL_Delay(1000);
 	  }
     /* USER CODE END WHILE */
 
@@ -157,9 +171,10 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_LSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -179,7 +194,8 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_ADC;
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_RTC|RCC_PERIPHCLK_ADC;
+  PeriphClkInit.RTCClockSelection = RCC_RTCCLKSOURCE_LSI;
   PeriphClkInit.AdcClockSelection = RCC_ADCPCLK2_DIV2;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
