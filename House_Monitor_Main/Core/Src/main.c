@@ -110,10 +110,13 @@ int main(void)
   HAL_ADCEx_Calibration_Start(&hadc1);
   if (LPS_Init() != HAL_OK)
 	  Error_Handler();
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+
+  HAL_Delay(100);
 
   while (1)
   {
@@ -123,11 +126,15 @@ int main(void)
 		  HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
 
 		  float photoresistor_voltage = HAL_ADC_GetValue(&hadc1) * SUPPLIED_VOLTAGE / 4096.0f;
-		  float light_percentage = photoresistor_voltage * 100.0f / SUPPLIED_VOLTAGE;
 		  float photoresistor_resistance = FIXED_PHOTORESISTOR_RESISTANCE * (SUPPLIED_VOLTAGE / photoresistor_voltage - 1);
-		  float lux_level = PHOTORESISTOR_MULTIPLIER / pow(photoresistor_resistance, PHOTORESISTOR_EXPONENT);
 
-		  printf("P = %.2f %%, L = %.2f lux\n", light_percentage, lux_level);
+		  float lux_level = PHOTORESISTOR_MULTIPLIER / pow(photoresistor_resistance, PHOTORESISTOR_EXPONENT);
+		  float light_percentage = photoresistor_voltage * 100.0f / SUPPLIED_VOLTAGE;
+
+		  float temp = LPS_Read_Temp();
+		  float pressure = LPS_Read_Pressure();
+
+		  printf("P = %.2f %%, L = %.2f lux, T = %.1f C, p = %.1f hPa\n", light_percentage, lux_level, temp, pressure);
 		  HAL_Delay(250);
 	  }
     /* USER CODE END WHILE */
