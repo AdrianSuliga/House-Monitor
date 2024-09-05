@@ -1,4 +1,0 @@
-../Core/Src/dht11.c:13:13:US_Delay	16	static
-../Core/Src/dht11.c:19:13:DHT11_Send_Start	8	static
-../Core/Src/dht11.c:27:16:DHT11_Read_Byte	16	static
-../Core/Src/dht11.c:45:19:DHT11_Read	32	static
