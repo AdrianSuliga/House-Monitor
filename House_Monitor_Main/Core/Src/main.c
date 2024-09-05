@@ -29,6 +29,7 @@
 /* USER CODE BEGIN Includes */
 #include "lps25hb.h"
 #include "dht11.h"
+#include "eeprom.h"
 #include <stdio.h>
 #include <math.h>
 /* USER CODE END Includes */
@@ -75,6 +76,30 @@ int __io_putchar(int ch)
 	HAL_UART_Transmit(&huart2, (uint8_t*)&ch, 1, HAL_MAX_DELAY);
 	return 1;
 }
+
+static void calculate_photoresistor_values(float* lux_level, float* light_percentage)
+{
+	HAL_ADC_Start(&hadc1);
+	HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
+
+	float photoresistor_voltage = HAL_ADC_GetValue(&hadc1) * SUPPLIED_VOLTAGE / 4096.0f;
+	float photoresistor_resistance = FIXED_PHOTORESISTOR_RESISTANCE * (SUPPLIED_VOLTAGE / photoresistor_voltage - 1);
+
+	*lux_level = PHOTORESISTOR_MULTIPLIER / pow(photoresistor_resistance, PHOTORESISTOR_EXPONENT);
+	*light_percentage = photoresistor_voltage * 100.0f / SUPPLIED_VOLTAGE;
+}
+
+static float merge_int_dec_part(float integer_part, float decimal_part)
+{
+	float result = integer_part;
+
+	if (decimal_part <= 100)
+		result += decimal_part / 100.0f;
+	else
+		result += decimal_part / 1000.0f;
+
+	return result;
+}
 /* USER CODE END 0 */
 
 /**
@@ -112,45 +137,41 @@ int main(void)
   MX_RTC_Init();
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
-  HAL_TIM_Base_Start(&htim2);
-
+  //Initialize ADC for photoresistor reading
   HAL_ADCEx_Calibration_Start(&hadc1);
 
+  // Initialize LPS25HB sensor and timer
+  // necessary for its functioning
+  HAL_TIM_Base_Start(&htim2);
   if (LPS_Init() != HAL_OK)
 	  Error_Handler();
 
+  // Clear EEPROM memory
+  if (EEPROM_Reset(0) != HAL_OK)
+  	  Error_Handler();
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-
   HAL_Delay(1000);
-
   while (1)
   {
-	  if (HAL_GPIO_ReadPin(USER_BUTTON_GPIO_Port, USER_BUTTON_Pin) == GPIO_PIN_RESET)
-	  {
-		  HAL_ADC_Start(&hadc1);
-		  HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
+	  float lux_level = 0.0f, light_percentage = 0.0f;
+	  calculate_photoresistor_values(&lux_level, &light_percentage);
 
-		  float photoresistor_voltage = HAL_ADC_GetValue(&hadc1) * SUPPLIED_VOLTAGE / 4096.0f;
-		  float photoresistor_resistance = FIXED_PHOTORESISTOR_RESISTANCE * (SUPPLIED_VOLTAGE / photoresistor_voltage - 1);
+	  uint8_t dht_vals[4] = {0};
+	  if (DHT11_Read(dht_vals) != HAL_OK)
+		  Error_Handler();
 
-		  float lux_level = PHOTORESISTOR_MULTIPLIER / pow(photoresistor_resistance, PHOTORESISTOR_EXPONENT);
-		  float light_percentage = photoresistor_voltage * 100.0f / SUPPLIED_VOLTAGE;
+	  float temp1 = LPS_Read_Temp();
+	  float pressure = LPS_Read_Pressure();
+	  float humidity = merge_int_dec_part((float)dht_vals[0], (float)dht_vals[1]);
+	  float temp2 = merge_int_dec_part((float)dht_vals[2], (float)dht_vals[3]);
 
-		  float temp = LPS_Read_Temp();
-		  float pressure = LPS_Read_Pressure();
+	  float temp = (temp1 + temp2) / 2.0f;
 
-		  uint8_t dht_vals[4] = {0};
-		  if (DHT11_Read(dht_vals) != HAL_OK)
-			  Error_Handler();
-
-		  printf("P = %.2f %%, L = %.2f lux, T = %.1f C, p = %.1f hPa\n", light_percentage, lux_level, temp, pressure);
-		  printf("H = %d.%d %%, T = %d.%d C\n\n", dht_vals[0], dht_vals[1], dht_vals[2], dht_vals[3]);
-
-		  HAL_Delay(1000);
-	  }
+	  printf("P = %.2f %%, L = %.2f lux, T = %.2f C, p = %.1f hPa, H = %.2f %%\n", light_percentage, lux_level, temp, pressure, humidity);
+	  HAL_Delay(1000);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
