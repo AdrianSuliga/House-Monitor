@@ -42,9 +42,19 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define SUPPLIED_VOLTAGE 3.3f
+
 #define FIXED_PHOTORESISTOR_RESISTANCE 1000.0f
 #define PHOTORESISTOR_EXPONENT 0.95f
 #define PHOTORESISTOR_MULTIPLIER 7000000.0f
+
+#define LIGHT_START_ADDR 0x00
+#define LIGHT_END_ADDR 0x1F
+#define TEMP_START_ADDR 0x20
+#define TEMP_END_ADDR 0x3F
+#define PRESSURE_START_ADDR 0x40
+#define PRESSURE_END_ADDR 0x5F
+#define HUMIDITY_START_ADDR 0x60
+#define HUMIDITY_END_ADDR 0x7F
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -55,7 +65,10 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+uint8_t current_light_addr = LIGHT_START_ADDR;
+uint8_t current_temp_addr = TEMP_START_ADDR;
+uint8_t current_press_addr = PRESSURE_START_ADDR;
+uint8_t current_humi_addr = HUMIDITY_START_ADDR;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -89,7 +102,7 @@ static void calculate_photoresistor_values(float* lux_level, float* light_percen
 	*light_percentage = photoresistor_voltage * 100.0f / SUPPLIED_VOLTAGE;
 }
 
-static float merge_int_dec_part(float integer_part, float decimal_part)
+static float merge_int_dec_part(const float integer_part, const float decimal_part)
 {
 	float result = integer_part;
 
@@ -100,6 +113,93 @@ static float merge_int_dec_part(float integer_part, float decimal_part)
 
 	return result;
 }
+
+static HAL_StatusTypeDef Write_Measured_Data(const uint16_t phot, const uint16_t temp, const uint16_t press, const uint16_t humi)
+{
+	uint8_t phot_high = (phot >> 8) & 0xFF;
+	uint8_t phot_low = phot & 0xFF;
+
+	uint8_t temp_high = (temp >> 8) & 0xFF;
+	uint8_t temp_low = temp & 0xFF;
+
+	uint8_t press_high = (press >> 8) & 0xFF;
+	uint8_t press_low = press & 0xFF;
+
+	uint8_t humi_high = (humi >> 8) & 0xFF;
+	uint8_t humi_low = humi & 0xFF;
+
+	if (EEPROM_Write(current_light_addr, (const void*)&phot_high, sizeof(phot_high)) != HAL_OK)
+		return HAL_ERROR;
+
+	if (EEPROM_Write(current_light_addr + 1, (const void*)&phot_low, sizeof(phot_low)) != HAL_OK)
+		return HAL_ERROR;
+
+	current_light_addr += 2;
+	if (current_light_addr > LIGHT_END_ADDR)
+		current_light_addr = LIGHT_START_ADDR;
+
+	if (EEPROM_Write(current_temp_addr, (const void*)&temp_high, sizeof(temp_high)) != HAL_OK)
+		return HAL_ERROR;
+
+	if (EEPROM_Write(current_temp_addr + 1, (const void*)&temp_low, sizeof(temp_low)) != HAL_OK)
+		return HAL_ERROR;
+
+	current_temp_addr += 2;
+	if (current_temp_addr > TEMP_END_ADDR)
+		current_temp_addr = TEMP_START_ADDR;
+
+	if (EEPROM_Write(current_press_addr, (const void*)&press_high, sizeof(press_high)) != HAL_OK)
+		return HAL_ERROR;
+
+	if (EEPROM_Write(current_press_addr + 1, (const void*)&press_low, sizeof(press_low)) != HAL_OK)
+		return HAL_ERROR;
+
+	current_press_addr += 2;
+	if (current_press_addr > PRESSURE_END_ADDR)
+		current_press_addr = PRESSURE_START_ADDR;
+
+	if (EEPROM_Write(current_humi_addr, (const void*)&humi_high, sizeof(humi_high)) != HAL_OK)
+		return HAL_ERROR;
+
+	if (EEPROM_Write(current_humi_addr + 1, (const void*)&humi_low, sizeof(humi_low)) != HAL_OK)
+		return HAL_ERROR;
+
+	current_humi_addr += 2;
+	if (current_humi_addr > HUMIDITY_END_ADDR)
+		current_humi_addr = HUMIDITY_START_ADDR;
+
+	return HAL_OK;
+}
+
+static HAL_StatusTypeDef Take_Measurements(uint16_t* phot, uint16_t* temp, uint16_t* press, uint16_t* humi)
+{
+	uint8_t dht_vals[4] = {0};
+
+	if (DHT11_Read(dht_vals) != HAL_OK)
+		return HAL_ERROR;
+
+	if (HAL_ADC_Start(&hadc1) != HAL_OK)
+		return HAL_ERROR;
+
+	if (HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY) != HAL_OK)
+		return HAL_ERROR;
+
+	*phot = HAL_ADC_GetValue(&hadc1);
+
+	float lps_temp = LPS_Read_Temp();
+	float dht_temp = merge_int_dec_part((float)dht_vals[2], (float)dht_vals[3]);
+	float average_temp = (lps_temp + dht_temp) / 2.0f;
+	*temp = average_temp * 100;
+
+	float pressure = LPS_Read_Pressure();
+	*press = pressure * 10;
+
+	float humidity = merge_int_dec_part((float)dht_vals[0], (float)dht_vals[1]);
+	*humi = humidity * 100;
+
+	return HAL_OK;
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -146,6 +246,8 @@ int main(void)
   if (LPS_Init() != HAL_OK)
 	  Error_Handler();
 
+  //LPS_Calibrate(32);
+
   // Clear EEPROM memory
   if (EEPROM_Reset(0) != HAL_OK)
   	  Error_Handler();
@@ -156,21 +258,15 @@ int main(void)
   HAL_Delay(1000);
   while (1)
   {
-	  float lux_level = 0.0f, light_percentage = 0.0f;
-	  calculate_photoresistor_values(&lux_level, &light_percentage);
+	  uint16_t phot_to_write = 0, temp_to_write = 0;
+	  uint16_t pressure_to_write = 0, humidity_to_write = 0;
 
-	  uint8_t dht_vals[4] = {0};
-	  if (DHT11_Read(dht_vals) != HAL_OK)
+	  if (Take_Measurements(&phot_to_write, &temp_to_write, &pressure_to_write, &humidity_to_write) != HAL_OK)
 		  Error_Handler();
 
-	  float temp1 = LPS_Read_Temp();
-	  float pressure = LPS_Read_Pressure();
-	  float humidity = merge_int_dec_part((float)dht_vals[0], (float)dht_vals[1]);
-	  float temp2 = merge_int_dec_part((float)dht_vals[2], (float)dht_vals[3]);
+	  if (Write_Measured_Data(phot_to_write, temp_to_write, pressure_to_write, humidity_to_write) != HAL_OK)
+		  Error_Handler();
 
-	  float temp = (temp1 + temp2) / 2.0f;
-
-	  printf("P = %.2f %%, L = %.2f lux, T = %.2f C, p = %.1f hPa, H = %.2f %%\n", light_percentage, lux_level, temp, pressure, humidity);
 	  HAL_Delay(1000);
     /* USER CODE END WHILE */
 
