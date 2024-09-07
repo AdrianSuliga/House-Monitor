@@ -19,6 +19,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "adc.h"
+#include "dma.h"
 #include "i2c.h"
 #include "rtc.h"
 #include "tim.h"
@@ -69,6 +70,8 @@ uint8_t current_light_addr = LIGHT_START_ADDR;
 uint8_t current_temp_addr = TEMP_START_ADDR;
 uint8_t current_press_addr = PRESSURE_START_ADDR;
 uint8_t current_humi_addr = HUMIDITY_START_ADDR;
+
+volatile static uint16_t dma_values[2];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -171,6 +174,29 @@ static HAL_StatusTypeDef Write_Measured_Data(const uint16_t phot, const uint16_t
 	return HAL_OK;
 }
 
+static HAL_StatusTypeDef Read_Measured_Data(uint16_t* phot, uint16_t* temp, uint16_t* press, uint16_t* humi)
+{
+	uint8_t buffor[2] = {0};
+
+	if (EEPROM_Read(LIGHT_START_ADDR, (void*)buffor, sizeof(buffor)) != HAL_OK)
+		return HAL_ERROR;
+	*phot = (uint16_t)buffor[0] << 8 | buffor[1];
+
+	if (EEPROM_Read(TEMP_START_ADDR, (void*)buffor, sizeof(buffor)) != HAL_OK)
+		return HAL_ERROR;
+	*temp = (uint16_t)buffor[0] << 8 | buffor[1];
+
+	if (EEPROM_Read(PRESSURE_START_ADDR, (void*)buffor, sizeof(buffor)) != HAL_OK)
+		return HAL_OK;
+	*press = (uint16_t)buffor[0] << 8 | buffor[1];
+
+	if (EEPROM_Read(HUMIDITY_START_ADDR, buffor, sizeof(buffor)) != HAL_OK)
+		return HAL_OK;
+	*humi = (uint16_t)buffor[0] << 8 | buffor[1];
+
+	return HAL_OK;
+}
+
 static HAL_StatusTypeDef Take_Measurements(uint16_t* phot, uint16_t* temp, uint16_t* press, uint16_t* humi)
 {
 	uint8_t dht_vals[4] = {0};
@@ -178,13 +204,7 @@ static HAL_StatusTypeDef Take_Measurements(uint16_t* phot, uint16_t* temp, uint1
 	if (DHT11_Read(dht_vals) != HAL_OK)
 		return HAL_ERROR;
 
-	if (HAL_ADC_Start(&hadc1) != HAL_OK)
-		return HAL_ERROR;
-
-	if (HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY) != HAL_OK)
-		return HAL_ERROR;
-
-	*phot = HAL_ADC_GetValue(&hadc1);
+	*phot = dma_values[0];
 
 	float lps_temp = LPS_Read_Temp();
 	float dht_temp = merge_int_dec_part((float)dht_vals[2], (float)dht_vals[3]);
@@ -231,6 +251,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_USART2_UART_Init();
   MX_ADC1_Init();
   MX_I2C1_Init();
@@ -239,6 +260,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
   //Initialize ADC for photoresistor reading
   HAL_ADCEx_Calibration_Start(&hadc1);
+  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)dma_values, 2);
 
   // Initialize LPS25HB sensor and timer
   // necessary for its functioning
@@ -258,14 +280,13 @@ int main(void)
   HAL_Delay(1000);
   while (1)
   {
-	  uint16_t phot_to_write = 0, temp_to_write = 0;
-	  uint16_t pressure_to_write = 0, humidity_to_write = 0;
+	  uint16_t pot_reading = dma_values[1];
 
-	  if (Take_Measurements(&phot_to_write, &temp_to_write, &pressure_to_write, &humidity_to_write) != HAL_OK)
-		  Error_Handler();
+	  if (pot_reading < 2000) { // Write values to EEPROM memory
 
-	  if (Write_Measured_Data(phot_to_write, temp_to_write, pressure_to_write, humidity_to_write) != HAL_OK)
-		  Error_Handler();
+	  } else { // Read values from EEPROM memory
+
+	  }
 
 	  HAL_Delay(1000);
     /* USER CODE END WHILE */
