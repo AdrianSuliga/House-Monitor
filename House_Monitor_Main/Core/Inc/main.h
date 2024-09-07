@@ -59,6 +59,12 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 #define DHT11_Pin GPIO_PIN_0
 #define DHT11_GPIO_Port GPIOC
+#define MEASURE_DIODE_Pin GPIO_PIN_1
+#define MEASURE_DIODE_GPIO_Port GPIOC
+#define PRINT_DIODE_Pin GPIO_PIN_2
+#define PRINT_DIODE_GPIO_Port GPIOC
+#define STANDBY_DIODE_Pin GPIO_PIN_3
+#define STANDBY_DIODE_GPIO_Port GPIOC
 #define LD2_Pin GPIO_PIN_5
 #define LD2_GPIO_Port GPIOA
 

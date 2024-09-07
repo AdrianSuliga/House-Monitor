@@ -19,7 +19,6 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "adc.h"
-#include "dma.h"
 #include "i2c.h"
 #include "rtc.h"
 #include "tim.h"
@@ -56,6 +55,10 @@
 #define PRESSURE_END_ADDR 0x5F
 #define HUMIDITY_START_ADDR 0x60
 #define HUMIDITY_END_ADDR 0x7F
+
+#define PRINT_MODE 0b100
+#define STANDBY_MODE 0b010
+#define MEASURE_MODE 0b001
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -66,12 +69,10 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-uint8_t current_light_addr = LIGHT_START_ADDR;
-uint8_t current_temp_addr = TEMP_START_ADDR;
-uint8_t current_press_addr = PRESSURE_START_ADDR;
-uint8_t current_humi_addr = HUMIDITY_START_ADDR;
-
-volatile static uint16_t dma_values[2];
+static uint8_t current_light_waddr = LIGHT_START_ADDR;
+static uint8_t current_temp_waddr = TEMP_START_ADDR;
+static uint8_t current_press_waddr = PRESSURE_START_ADDR;
+static uint8_t current_humi_waddr = HUMIDITY_START_ADDR;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -95,10 +96,7 @@ int __io_putchar(int ch)
 
 static void calculate_photoresistor_values(float* lux_level, float* light_percentage)
 {
-	HAL_ADC_Start(&hadc1);
-	HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
-
-	float photoresistor_voltage = HAL_ADC_GetValue(&hadc1) * SUPPLIED_VOLTAGE / 4096.0f;
+	float photoresistor_voltage = 1.0f * SUPPLIED_VOLTAGE / 4096.0f;
 	float photoresistor_resistance = FIXED_PHOTORESISTOR_RESISTANCE * (SUPPLIED_VOLTAGE / photoresistor_voltage - 1);
 
 	*lux_level = PHOTORESISTOR_MULTIPLIER / pow(photoresistor_resistance, PHOTORESISTOR_EXPONENT);
@@ -131,68 +129,57 @@ static HAL_StatusTypeDef Write_Measured_Data(const uint16_t phot, const uint16_t
 	uint8_t humi_high = (humi >> 8) & 0xFF;
 	uint8_t humi_low = humi & 0xFF;
 
-	if (EEPROM_Write(current_light_addr, (const void*)&phot_high, sizeof(phot_high)) != HAL_OK)
+	if (EEPROM_Write(current_light_waddr, (const void*)&phot_high, sizeof(phot_high)) != HAL_OK)
 		return HAL_ERROR;
 
-	if (EEPROM_Write(current_light_addr + 1, (const void*)&phot_low, sizeof(phot_low)) != HAL_OK)
+	if (EEPROM_Write(current_light_waddr + 1, (const void*)&phot_low, sizeof(phot_low)) != HAL_OK)
 		return HAL_ERROR;
 
-	current_light_addr += 2;
-	if (current_light_addr > LIGHT_END_ADDR)
-		current_light_addr = LIGHT_START_ADDR;
+	current_light_waddr += 2;
+	if (current_light_waddr > LIGHT_END_ADDR)
+		current_light_waddr = LIGHT_START_ADDR;
 
-	if (EEPROM_Write(current_temp_addr, (const void*)&temp_high, sizeof(temp_high)) != HAL_OK)
+	if (EEPROM_Write(current_temp_waddr, (const void*)&temp_high, sizeof(temp_high)) != HAL_OK)
 		return HAL_ERROR;
 
-	if (EEPROM_Write(current_temp_addr + 1, (const void*)&temp_low, sizeof(temp_low)) != HAL_OK)
+	if (EEPROM_Write(current_temp_waddr + 1, (const void*)&temp_low, sizeof(temp_low)) != HAL_OK)
 		return HAL_ERROR;
 
-	current_temp_addr += 2;
-	if (current_temp_addr > TEMP_END_ADDR)
-		current_temp_addr = TEMP_START_ADDR;
+	current_temp_waddr += 2;
+	if (current_temp_waddr > TEMP_END_ADDR)
+		current_temp_waddr = TEMP_START_ADDR;
 
-	if (EEPROM_Write(current_press_addr, (const void*)&press_high, sizeof(press_high)) != HAL_OK)
+	if (EEPROM_Write(current_press_waddr, (const void*)&press_high, sizeof(press_high)) != HAL_OK)
 		return HAL_ERROR;
 
-	if (EEPROM_Write(current_press_addr + 1, (const void*)&press_low, sizeof(press_low)) != HAL_OK)
+	if (EEPROM_Write(current_press_waddr + 1, (const void*)&press_low, sizeof(press_low)) != HAL_OK)
 		return HAL_ERROR;
 
-	current_press_addr += 2;
-	if (current_press_addr > PRESSURE_END_ADDR)
-		current_press_addr = PRESSURE_START_ADDR;
+	current_press_waddr += 2;
+	if (current_press_waddr > PRESSURE_END_ADDR)
+		current_press_waddr = PRESSURE_START_ADDR;
 
-	if (EEPROM_Write(current_humi_addr, (const void*)&humi_high, sizeof(humi_high)) != HAL_OK)
+	if (EEPROM_Write(current_humi_waddr, (const void*)&humi_high, sizeof(humi_high)) != HAL_OK)
 		return HAL_ERROR;
 
-	if (EEPROM_Write(current_humi_addr + 1, (const void*)&humi_low, sizeof(humi_low)) != HAL_OK)
+	if (EEPROM_Write(current_humi_waddr + 1, (const void*)&humi_low, sizeof(humi_low)) != HAL_OK)
 		return HAL_ERROR;
 
-	current_humi_addr += 2;
-	if (current_humi_addr > HUMIDITY_END_ADDR)
-		current_humi_addr = HUMIDITY_START_ADDR;
+	current_humi_waddr += 2;
+	if (current_humi_waddr > HUMIDITY_END_ADDR)
+		current_humi_waddr = HUMIDITY_START_ADDR;
 
 	return HAL_OK;
 }
 
-static HAL_StatusTypeDef Read_Measured_Data(uint16_t* phot, uint16_t* temp, uint16_t* press, uint16_t* humi)
+static HAL_StatusTypeDef Read_Measured_Data(uint16_t* data, uint8_t addr)
 {
 	uint8_t buffor[2] = {0};
 
-	if (EEPROM_Read(LIGHT_START_ADDR, (void*)buffor, sizeof(buffor)) != HAL_OK)
+	if (EEPROM_Read(addr, (void*)buffor, sizeof(buffor)) != HAL_OK)
 		return HAL_ERROR;
-	*phot = (uint16_t)buffor[0] << 8 | buffor[1];
 
-	if (EEPROM_Read(TEMP_START_ADDR, (void*)buffor, sizeof(buffor)) != HAL_OK)
-		return HAL_ERROR;
-	*temp = (uint16_t)buffor[0] << 8 | buffor[1];
-
-	if (EEPROM_Read(PRESSURE_START_ADDR, (void*)buffor, sizeof(buffor)) != HAL_OK)
-		return HAL_OK;
-	*press = (uint16_t)buffor[0] << 8 | buffor[1];
-
-	if (EEPROM_Read(HUMIDITY_START_ADDR, buffor, sizeof(buffor)) != HAL_OK)
-		return HAL_OK;
-	*humi = (uint16_t)buffor[0] << 8 | buffor[1];
+	*data = (uint16_t)buffor[0] << 8 | buffor[1];
 
 	return HAL_OK;
 }
@@ -204,7 +191,9 @@ static HAL_StatusTypeDef Take_Measurements(uint16_t* phot, uint16_t* temp, uint1
 	if (DHT11_Read(dht_vals) != HAL_OK)
 		return HAL_ERROR;
 
-	*phot = dma_values[0];
+	HAL_ADC_Start(&hadc1);
+	HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
+	*phot = HAL_ADC_GetValue(&hadc1);
 
 	float lps_temp = LPS_Read_Temp();
 	float dht_temp = merge_int_dec_part((float)dht_vals[2], (float)dht_vals[3]);
@@ -218,6 +207,30 @@ static HAL_StatusTypeDef Take_Measurements(uint16_t* phot, uint16_t* temp, uint1
 	*humi = humidity * 100;
 
 	return HAL_OK;
+}
+
+static HAL_StatusTypeDef Print_Measured_Data(uint8_t current_addr, uint8_t max_addr)
+{
+	while (current_addr < max_addr) {
+		uint16_t data = 0;
+
+		if (Read_Measured_Data(&data, current_addr) != HAL_OK)
+			return HAL_ERROR;
+
+		printf("%d ", data);
+
+		current_addr += 2;
+	}
+	printf("\n");
+
+	return HAL_OK;
+}
+
+static void Diode_Signal(uint8_t bit_mask)
+{
+	HAL_GPIO_WritePin(PRINT_DIODE_GPIO_Port, PRINT_DIODE_Pin, bit_mask & 0x04);
+	HAL_GPIO_WritePin(STANDBY_DIODE_GPIO_Port, STANDBY_DIODE_Pin, bit_mask & 0x02);
+	HAL_GPIO_WritePin(MEASURE_DIODE_GPIO_Port, MEASURE_DIODE_Pin, bit_mask & 0x01);
 }
 
 /* USER CODE END 0 */
@@ -251,16 +264,16 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_DMA_Init();
   MX_USART2_UART_Init();
   MX_ADC1_Init();
   MX_I2C1_Init();
   MX_RTC_Init();
   MX_TIM2_Init();
+  MX_ADC2_Init();
   /* USER CODE BEGIN 2 */
   //Initialize ADC for photoresistor reading
   HAL_ADCEx_Calibration_Start(&hadc1);
-  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)dma_values, 2);
+  HAL_ADCEx_Calibration_Start(&hadc2);
 
   // Initialize LPS25HB sensor and timer
   // necessary for its functioning
@@ -280,12 +293,45 @@ int main(void)
   HAL_Delay(1000);
   while (1)
   {
-	  uint16_t pot_reading = dma_values[1];
+	  HAL_ADC_Start(&hadc2);
+	  HAL_ADC_PollForConversion(&hadc2, HAL_MAX_DELAY);
+	  uint16_t pot_reading = HAL_ADC_GetValue(&hadc2);
 
-	  if (pot_reading < 2000) { // Write values to EEPROM memory
+	  if (pot_reading < 1000) { // Measuring mode
 
-	  } else { // Read values from EEPROM memory
+		  Diode_Signal(MEASURE_MODE);
 
+		  uint16_t phot = 0, temp = 0, press = 0, humi = 0;
+
+		  if (Take_Measurements(&phot, &temp, &press, &humi) != HAL_OK)
+			  Error_Handler();
+
+		  if (Write_Measured_Data(phot, temp, press, humi) != HAL_OK)
+			  Error_Handler();
+
+	  } else if (pot_reading > 3000) { // Reading mode
+
+		  Diode_Signal(PRINT_MODE);
+
+		  printf("LIGHT: ");
+		  if (Print_Measured_Data(LIGHT_START_ADDR, LIGHT_END_ADDR) != HAL_OK)
+			  Error_Handler();
+
+		  printf("TEMPERATURE: ");
+		  if (Print_Measured_Data(TEMP_START_ADDR, TEMP_END_ADDR) != HAL_OK)
+			  Error_Handler();
+
+		  printf("PRESSURE: ");
+		  if (Print_Measured_Data(PRESSURE_START_ADDR, PRESSURE_END_ADDR) != HAL_OK)
+			  Error_Handler();
+
+		  printf("HUMIDITY: ");
+		  if (Print_Measured_Data(HUMIDITY_START_ADDR, HUMIDITY_END_ADDR) != HAL_OK)
+			  Error_Handler();
+
+		  printf("END\n");
+	  } else {
+		  Diode_Signal(STANDBY_MODE);
 	  }
 
 	  HAL_Delay(1000);
