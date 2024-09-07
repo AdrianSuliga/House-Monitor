@@ -20,6 +20,7 @@
 #include "main.h"
 #include "adc.h"
 #include "i2c.h"
+#include "iwdg.h"
 #include "rtc.h"
 #include "tim.h"
 #include "usart.h"
@@ -281,6 +282,7 @@ int main(void)
   MX_RTC_Init();
   MX_TIM2_Init();
   MX_ADC2_Init();
+  MX_IWDG_Init();
   /* USER CODE BEGIN 2 */
   //Initialize ADC for photoresistor reading
   HAL_ADCEx_Calibration_Start(&hadc1);
@@ -301,6 +303,7 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  HAL_IWDG_Refresh(&hiwdg);
   HAL_Delay(1000);
   while (1)
   {
@@ -345,6 +348,7 @@ int main(void)
 		  Diode_Signal(STANDBY_MODE);
 	  }
 
+	  HAL_IWDG_Refresh(&hiwdg);
 	  HAL_Delay(1000);
     /* USER CODE END WHILE */
 
