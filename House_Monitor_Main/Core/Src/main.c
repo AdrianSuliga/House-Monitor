@@ -94,13 +94,24 @@ int __io_putchar(int ch)
 	return 1;
 }
 
-static void calculate_photoresistor_values(float* lux_level, float* light_percentage)
+static float decode_light(uint16_t raw_value)
 {
-	float photoresistor_voltage = 1.0f * SUPPLIED_VOLTAGE / 4096.0f;
-	float photoresistor_resistance = FIXED_PHOTORESISTOR_RESISTANCE * (SUPPLIED_VOLTAGE / photoresistor_voltage - 1);
+	return raw_value * 100.0f / 4096.0f;
+}
 
-	*lux_level = PHOTORESISTOR_MULTIPLIER / pow(photoresistor_resistance, PHOTORESISTOR_EXPONENT);
-	*light_percentage = photoresistor_voltage * 100.0f / SUPPLIED_VOLTAGE;
+static float decode_temperature(uint16_t raw_value)
+{
+	return raw_value / 100.0f;
+}
+
+static float decode_pressure(uint16_t raw_value)
+{
+	return raw_value / 10.0f;
+}
+
+static float decode_humidity(uint16_t raw_value)
+{
+	return raw_value / 100.0f;
 }
 
 static float merge_int_dec_part(const float integer_part, const float decimal_part)
@@ -209,7 +220,7 @@ static HAL_StatusTypeDef Take_Measurements(uint16_t* phot, uint16_t* temp, uint1
 	return HAL_OK;
 }
 
-static HAL_StatusTypeDef Print_Measured_Data(uint8_t current_addr, uint8_t max_addr)
+static HAL_StatusTypeDef Print_Measured_Data(uint8_t current_addr, uint8_t max_addr, float (*decode_fnc)(uint16_t))
 {
 	while (current_addr < max_addr) {
 		uint16_t data = 0;
@@ -217,7 +228,7 @@ static HAL_StatusTypeDef Print_Measured_Data(uint8_t current_addr, uint8_t max_a
 		if (Read_Measured_Data(&data, current_addr) != HAL_OK)
 			return HAL_ERROR;
 
-		printf("%d ", data);
+		printf("%.2f ", (*decode_fnc)(data));
 
 		current_addr += 2;
 	}
@@ -314,19 +325,19 @@ int main(void)
 		  Diode_Signal(PRINT_MODE);
 
 		  printf("LIGHT: ");
-		  if (Print_Measured_Data(LIGHT_START_ADDR, LIGHT_END_ADDR) != HAL_OK)
+		  if (Print_Measured_Data(LIGHT_START_ADDR, LIGHT_END_ADDR, &decode_light) != HAL_OK)
 			  Error_Handler();
 
 		  printf("TEMPERATURE: ");
-		  if (Print_Measured_Data(TEMP_START_ADDR, TEMP_END_ADDR) != HAL_OK)
+		  if (Print_Measured_Data(TEMP_START_ADDR, TEMP_END_ADDR, &decode_temperature) != HAL_OK)
 			  Error_Handler();
 
 		  printf("PRESSURE: ");
-		  if (Print_Measured_Data(PRESSURE_START_ADDR, PRESSURE_END_ADDR) != HAL_OK)
+		  if (Print_Measured_Data(PRESSURE_START_ADDR, PRESSURE_END_ADDR, &decode_pressure) != HAL_OK)
 			  Error_Handler();
 
 		  printf("HUMIDITY: ");
-		  if (Print_Measured_Data(HUMIDITY_START_ADDR, HUMIDITY_END_ADDR) != HAL_OK)
+		  if (Print_Measured_Data(HUMIDITY_START_ADDR, HUMIDITY_END_ADDR, &decode_humidity) != HAL_OK)
 			  Error_Handler();
 
 		  printf("END\n");
