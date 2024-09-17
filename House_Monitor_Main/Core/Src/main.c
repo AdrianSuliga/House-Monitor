@@ -305,6 +305,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   HAL_IWDG_Refresh(&hiwdg);
   HAL_Delay(1000);
+  
   while (1)
   {
 	  HAL_ADC_Start(&hadc2);
