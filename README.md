@@ -49,7 +49,13 @@ For further instructions go to the circuit section.
 
 ## Circuit
 
-TODO
+### LEDs circuit:
+
+![LEDs_circuit](./Markdown_Sources/LEDs.svg)
+
+### DHT11 and potentiometer
+
+![DHT_POT_circuits](./Markdown_Sources/DHT_POT.svg)
 
 ## Additional info
 
