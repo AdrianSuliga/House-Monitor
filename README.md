@@ -33,7 +33,19 @@ User may alternate between above mode by rotating a potentiometer, currently cho
 
 ## How to setup
 
-TODO
+Regarding setup, refer to NUCLEO-F103RB pinout:
+
+![Nucleo_F103RB_pinout](./Markdown_Sources/NucleoBoardPinout.png)
+
+- Use 3.3V to power the circuit, otherwise you might damagage ADC pins since some of them may not tolerate 5V,
+- Connect yellow LED to PC1 pin, blue to PC2 and green to PC3,
+- Connect DHT11's middle gold pin to PC0,
+- Connect potentiometer's middle gold pin to PA1,
+- Connect photoresistor to PA0,
+- PB6 pin is used as SCL for I2C communication,
+- PB7 pin is used as SDA for I2C communication.
+
+For further instructions go to the circuit section.
 
 ## Circuit
 
