@@ -57,6 +57,10 @@ For further instructions go to the circuit section.
 
 ![DHT_POT_circuits](./Markdown_Sources/DHT_POT.svg)
 
+### I2C devices
+
+![EEPROM_LPS25HB_circuits](./Markdown_Sources/I2C.svg)
+
 ## Additional info
 
 ### EEPROM reset
